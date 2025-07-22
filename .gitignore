@@ -1,0 +1,39 @@
+# Terraform files
+terraform/.terraform/
+terraform/.terraform.lock.hcl
+terraform/terraform.tfstate*
+terraform/terraform.tfvars
+terraform/tfplan
+terraform/infrastructure-validation-report.md
+
+# Kubernetes configs
+*.kubeconfig
+kubeconfig*
+
+# Sensitive files
+*.pem
+*.key
+*.crt
+secrets/
+
+# IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Log files
+*.log
+
+# Backup files
+*.backup
+*.bak
+
+# Temporary files
+*.tmp
+*.temp

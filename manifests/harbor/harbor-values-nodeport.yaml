@@ -1,0 +1,105 @@
+# Harbor Helm values for k3s with NodePort (10.0.0.88)
+expose:
+  type: nodePort
+  nodePort:
+    name: harbor
+    ports:
+      http:
+        port: 80
+        nodePort: 30880
+  tls:
+    enabled: false
+
+externalURL: http://10.0.0.88:30880
+
+# Use internal database and redis
+database:
+  type: internal
+  internal:
+    password: "Harbor12345"
+    
+redis:
+  type: internal
+  internal:
+    password: "Redis12345"
+
+# Storage configuration
+persistence:
+  enabled: true
+  resourcePolicy: "keep"
+  persistentVolumeClaim:
+    registry:
+      existingClaim: ""
+      storageClass: "local-path"
+      size: 5Gi
+    chartmuseum:
+      existingClaim: ""
+      storageClass: "local-path"
+      size: 5Gi
+    jobservice:
+      jobLog:
+        existingClaim: ""
+        storageClass: "local-path"
+        size: 1Gi
+    database:
+      existingClaim: ""
+      storageClass: "local-path"
+      size: 1Gi
+    redis:
+      existingClaim: ""
+      storageClass: "local-path"
+      size: 1Gi
+    trivy:
+      existingClaim: ""
+      storageClass: "local-path"
+      size: 5Gi
+
+# Harbor admin password
+harborAdminPassword: "Harbor12345"
+
+# Disable https for internal testing
+internalTLS:
+  enabled: false
+
+# Resource limits for single node
+core:
+  resources:
+    requests:
+      memory: "256Mi"
+      cpu: "100m"
+    limits:
+      memory: "512Mi"
+      cpu: "500m"
+
+jobservice:
+  resources:
+    requests:
+      memory: "256Mi"
+      cpu: "100m"
+    limits:
+      memory: "512Mi"
+      cpu: "500m"
+
+registry:
+  resources:
+    requests:
+      memory: "256Mi"
+      cpu: "100m"
+    limits:
+      memory: "512Mi"
+      cpu: "500m"
+
+trivy:
+  resources:
+    requests:
+      memory: "512Mi"
+      cpu: "200m"
+    limits:
+      memory: "1Gi"
+      cpu: "1"
+
+notary:
+  enabled: false
+
+metrics:
+  enabled: false

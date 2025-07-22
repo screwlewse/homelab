@@ -1,0 +1,39 @@
+# k3s DevOps Pipeline Terraform Variables
+# Copy this file to terraform.tfvars and customize for your environment
+
+# Cluster Configuration
+cluster_name    = "k3s-devops-homelab"
+server_ip       = "10.0.0.88"
+kubeconfig_path = "~/.kube/config"
+
+# MetalLB Configuration
+metallb_ip_range = "10.0.0.200-10.0.0.210"
+
+# NodePort Configuration
+nodeport_range = {
+  traefik_http      = 30080
+  traefik_https     = 30443
+  traefik_dashboard = 30900
+  harbor            = 30880
+  argocd            = 30808
+}
+
+# Harbor Configuration
+harbor_config = {
+  admin_password = "Harbor12345"
+  storage_size   = "5Gi"
+}
+
+# ArgoCD Configuration
+argocd_config = {
+  server_insecure = true
+}
+
+# Component Selection
+enable_components = {
+  metallb      = true
+  traefik      = true
+  harbor       = true
+  cert_manager = true
+  argocd       = true
+}

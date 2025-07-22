@@ -1,0 +1,47 @@
+# Traefik Helm values for k3s with MetalLB LoadBalancer
+deployment:
+  replicas: 1
+
+service:
+  type: LoadBalancer
+  annotations:
+    metallb.universe.tf/address-pool: default-pool
+
+ports:
+  web:
+    port: 80
+    expose: 
+      default: true
+  websecure:
+    port: 443
+    expose:
+      default: true
+  traefik:
+    port: 9000
+    expose:
+      default: true
+
+ingressRoute:
+  dashboard:
+    enabled: true
+
+api:
+  dashboard: true
+  insecure: true
+
+entryPoints:
+  web:
+    address: ":80"
+  websecure:
+    address: ":443"
+  traefik:
+    address: ":9000"
+
+persistence:
+  enabled: true
+  accessMode: ReadWriteOnce
+  size: 128Mi
+
+globalArguments:
+  - "--global.checknewversion=false"
+  - "--global.sendanonymoususage=false"
