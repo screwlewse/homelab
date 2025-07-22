@@ -1,271 +1,287 @@
-# k3s DevOps Pipeline - Phase 2: Core Infrastructure
+# k3s DevOps Pipeline - Complete Infrastructure Automation
 
 ## Overview
 
-This repository contains the implementation of **Phase 2** of the k3s DevOps Pipeline project, focusing on core infrastructure deployment including ingress controller, load balancer, container registry, and certificate management.
+This repository contains a **production-grade k3s DevOps pipeline** with complete Infrastructure as Code (IaC) automation, GitOps workflows, and CI/CD integration. It implements enterprise-level DevOps practices on a single-node k3s cluster.
 
-## Architecture
+## 🏗️ Architecture
 
-### Deployed Components
+### Core Infrastructure Stack
 
-| Component | Technology | LoadBalancer IP | Purpose |
-|-----------|------------|-----------------|---------|
-| **Load Balancer** | MetalLB | 10.0.0.200-210 | Service load balancing |
-| **Ingress Controller** | Traefik | 10.0.0.200 | HTTP/HTTPS routing |
-| **Container Registry** | Harbor | 10.0.0.201 | Image storage and scanning |
-| **Certificate Manager** | cert-manager | N/A | SSL certificate automation |
+| Component | Technology | Access | Purpose |
+|-----------|------------|--------|---------|
+| **Container Orchestration** | k3s (Kubernetes) | - | Lightweight single-node cluster |
+| **Load Balancing** | MetalLB | IP Pool: 10.0.0.200-210 | LoadBalancer services |
+| **Ingress Controller** | Traefik | http://10.0.0.88:30900 | HTTP/HTTPS routing |
+| **Container Registry** | Harbor | http://10.0.0.88:30880 | Image storage and scanning |
+| **GitOps Engine** | ArgoCD | http://10.0.0.88:30808 | Automated deployment |
+| **Certificate Management** | cert-manager | - | SSL certificate automation |
 
-### Network Configuration
+### Infrastructure as Code
 
-- **k3s Server**: 10.0.0.88 (Ubuntu 24 server)
-- **MetalLB IP Pool**: 10.0.0.200-10.0.0.210
-- **Access Method**: Mac laptop → LoadBalancer IPs → k3s services
+- **Terraform Modules**: Complete IaC with reusable components
+- **GitOps Integration**: ArgoCD for declarative deployments
+- **CI/CD Automation**: GitHub Actions workflows
+- **Testing & Validation**: Automated infrastructure testing
 
-## Quick Start
+## 🚀 Quick Start
 
 ### Prerequisites
 
-- k3s cluster running on 10.0.0.88
+- Ubuntu 24 server with k3s installed
 - kubectl configured with cluster access
-- Helm package manager installed
-- Network connectivity from Mac to 10.0.0.x subnet
+- Terraform >= 1.0 (for IaC deployment)
 
-### Deploy All Components
+### Option 1: Infrastructure as Code (Recommended)
 
 ```bash
-# Clone or navigate to the project directory
-cd /home/davidg/k8s-devops-pipeline
+# Clone repository
+git clone https://github.com/screwlewse/homelab.git
+cd homelab
 
-# Deploy all Phase 2 components
+# Deploy with Terraform
+make tf-init
+make tf-apply
+
+# Validate deployment
+make tf-test
+```
+
+### Option 2: Traditional Deployment
+
+```bash
+# Deploy all components
 make deploy-all
 
-# Check deployment status
-make status
-
-# Verify service accessibility
+# Verify services
 make verify
+make status
 ```
 
-### Individual Component Deployment
+### Option 3: Phase-by-Phase Setup
 
 ```bash
-# Deploy components individually
-make deploy-metallb
-make deploy-traefik
-make deploy-cert-manager
-make deploy-harbor
+# Phase 1: Foundation (k3s, networking)
+make phase1
+make verify-phase1
 
-# Clean up components
-make clean-harbor
-make clean-traefik
-make clean
+# Phase 2 & 3: Complete infrastructure
+make deploy-all
 ```
 
-## Service Access
+## 📋 Service Access
 
 ### Web Interfaces
 
-Access these services from your Mac laptop:
-
 | Service | URL | Credentials |
 |---------|-----|-------------|
-| **Traefik Dashboard** | http://10.0.0.200:8080 | No auth required |
-| **Harbor Web UI** | http://10.0.0.201 | admin / Harbor12345 |
+| **Traefik Dashboard** | http://10.0.0.88:30900/dashboard/ | No auth required |
+| **Harbor Registry** | http://10.0.0.88:30880 | admin / Harbor12345 |
+| **ArgoCD GitOps** | http://10.0.0.88:30808 | admin / [get secret] |
 
-### Command Line Access
+### CLI Access
 
 ```bash
-# Check cluster status
+# Get ArgoCD admin password
+kubectl get secret argocd-initial-admin-secret -n argocd -o jsonpath='{.data.password}' | base64 -d
+
+# Check all services
+make info
+```
+
+## 🔧 Infrastructure as Code
+
+### Terraform Modules
+
+```
+terraform/
+├── modules/
+│   ├── metallb/      # Load balancer
+│   ├── traefik/      # Ingress controller
+│   ├── harbor/       # Container registry
+│   ├── cert-manager/ # Certificate management
+│   └── argocd/       # GitOps engine
+├── tests/            # Infrastructure validation
+└── *.tf              # Main configuration
+```
+
+### Terraform Operations
+
+```bash
+# Initialize and plan
+make tf-init
+make tf-plan
+
+# Deploy infrastructure
+make tf-apply
+
+# Validate deployment
+make tf-test
+
+# Show outputs
+make tf-output
+
+# Cleanup
+make tf-destroy
+```
+
+### Configuration
+
+Copy and customize the configuration:
+
+```bash
+cp terraform/terraform.tfvars.example terraform/terraform.tfvars
+# Edit with your settings
+```
+
+## 🔄 GitOps & CI/CD
+
+### ArgoCD Applications
+
+- **Application-of-Applications** pattern
+- **Automated sync** from Git repositories
+- **Multi-environment** support (dev/staging/prod)
+- **Health monitoring** and rollback capabilities
+
+### GitHub Actions
+
+- **Infrastructure Pipeline**: Terraform validation and deployment
+- **Application Pipeline**: Build, test, and deploy applications
+- **Security Scanning**: tfsec and vulnerability scanning
+- **Automated Testing**: Infrastructure validation
+
+### GitOps Structure
+
+```
+gitops/
+├── apps/                 # ArgoCD Applications
+├── environments/         # Environment-specific configs
+│   ├── dev/
+│   ├── staging/
+│   └── prod/
+└── infrastructure/       # Infrastructure as Code
+```
+
+## 🧪 Testing & Validation
+
+### Automated Testing
+
+```bash
+# Run comprehensive infrastructure tests
+make tf-test
+
+# Traditional validation
+make verify
+
+# Check component status
+make status
+```
+
+### Manual Verification
+
+```bash
+# Test service accessibility
+curl http://10.0.0.88:30900/dashboard/
+curl http://10.0.0.88:30880
+curl http://10.0.0.88:30808
+
+# Check Kubernetes health
 kubectl get nodes
-
-# View all LoadBalancer services
-kubectl get services --all-namespaces | grep LoadBalancer
-
-# Monitor Harbor deployment
-kubectl get pods -n harbor -w
-
-# View Traefik logs
-kubectl logs -n traefik -l app.kubernetes.io/name=traefik
+kubectl get pods --all-namespaces
 ```
 
-## Configuration Files
+## 📚 Documentation
 
-### Directory Structure
+- **[Phase 3 GitOps Guide](docs/PHASE3-GITOPS.md)**: Complete GitOps implementation
+- **[Terraform README](terraform/README.md)**: Infrastructure as Code details
+- **[Scripts Directory](scripts/)**: Automation and setup scripts
 
-```
-k8s-devops-pipeline/
-├── manifests/
-│   ├── metallb/
-│   │   ├── metallb-namespace.yaml
-│   │   └── metallb-config.yaml
-│   ├── traefik/
-│   │   ├── traefik-namespace.yaml
-│   │   └── traefik-values.yaml
-│   ├── harbor/
-│   │   ├── harbor-namespace.yaml
-│   │   └── harbor-values.yaml
-│   └── cert-manager/
-│       └── cert-manager-namespace.yaml
-├── scripts/
-│   └── setup-phase2.sh
-├── docs/
-├── helm-charts/
-├── apps/
-├── Makefile
-└── README.md
-```
-
-### Key Configuration Details
-
-#### MetalLB Configuration
-- **IP Pool**: 10.0.0.200-10.0.0.210
-- **Advertisement**: Layer 2 (ARP)
-- **Pool Name**: default-pool
-
-#### Traefik Configuration
-- **Service Type**: LoadBalancer (10.0.0.200)
-- **Ports**: HTTP (80), HTTPS (443), Dashboard (8080)
-- **Dashboard**: Enabled with insecure access
-
-#### Harbor Configuration
-- **Service Type**: LoadBalancer (10.0.0.201)
-- **Database**: Internal PostgreSQL
-- **Storage**: Local path provisioner (5Gi registry, 1Gi DB)
-- **TLS**: Disabled for internal testing
-
-## Automation Scripts
-
-### Makefile Targets
+## 🛠️ Available Commands
 
 ```bash
-make help          # Display help message
-make status        # Check status of all components
-make deploy-all    # Deploy all infrastructure components
-make verify        # Verify service accessibility
-make clean         # Remove all components
-make info          # Display service information
+# Infrastructure Operations
+make help                 # Show all available commands
+make deploy-all           # Deploy entire infrastructure
+make status               # Check infrastructure status
+make verify               # Verify service accessibility
+make clean                # Remove all components
+
+# Terraform Operations  
+make tf-init              # Initialize Terraform
+make tf-plan              # Plan infrastructure changes
+make tf-apply             # Apply Terraform configuration
+make tf-test              # Run infrastructure tests
+make tf-destroy           # Destroy infrastructure
+
+# Phase-based Operations
+make phase1               # Foundation setup
+make verify-phase1        # Verify Phase 1
+make network-info         # Display network information
+make logs                 # Show component logs
 ```
 
-### Setup Script
+## 🔐 Security
 
-```bash
-# Run automated Phase 2 setup
-./scripts/setup-phase2.sh
-```
+### Current Configuration (Development)
 
-The setup script includes:
-- Prerequisites checking
-- Sequential component deployment
-- Health checks and verification
-- Service information display
+- **HTTP Access**: All services use HTTP for development
+- **Insecure Dashboards**: Traefik and ArgoCD dashboards open
+- **Default Credentials**: Standard passwords for demo purposes
 
-## Troubleshooting
+### Production Hardening
 
-### Common Issues
+- [ ] Enable TLS for all services
+- [ ] Configure proper RBAC
+- [ ] Implement network policies
+- [ ] Use external secret management
+- [ ] Enable audit logging
 
-#### MetalLB IP Pool Conflicts
-```bash
-# Check existing IP pools
-kubectl get ipaddresspools -n metallb-system
+## 📊 Features
 
-# Delete conflicting pool if needed
-kubectl delete ipaddresspool production -n metallb-system
-```
+### ✅ Implemented
 
-#### Harbor Deployment Timeout
-```bash
-# Increase timeout for Harbor deployment
-helm upgrade harbor harbor/harbor -n harbor --timeout 15m
+- **Complete Infrastructure as Code** with Terraform
+- **GitOps Workflows** with ArgoCD
+- **CI/CD Automation** with GitHub Actions
+- **Automated Testing** and validation
+- **NodePort Services** for single-node access
+- **Comprehensive Documentation**
+- **Production-ready Automation**
 
-# Check Harbor pod status
-kubectl get pods -n harbor
-kubectl describe pod <harbor-pod-name> -n harbor
-```
+### 🔮 Future Enhancements
 
-#### Traefik Dashboard Access
-```bash
-# Check Traefik service
-kubectl get service traefik -n traefik
+- Multi-cluster GitOps with ApplicationSets
+- Service mesh integration (Istio)
+- Advanced monitoring (Prometheus + Grafana)
+- External DNS automation
+- Vault integration for secrets
+- Disaster recovery automation
 
-# Port-forward if LoadBalancer isn't working
-kubectl port-forward service/traefik 8080:8080 -n traefik
-```
+## 🚦 Project Status
 
-### Logs and Debugging
+- **Phase 1**: ✅ Foundation (k3s, networking)
+- **Phase 2**: ✅ Core Infrastructure (Traefik, Harbor, cert-manager)
+- **Phase 3**: ✅ GitOps & CI/CD (ArgoCD, GitHub Actions)
+- **Infrastructure as Code**: ✅ Complete Terraform automation
+- **Testing & Validation**: ✅ Comprehensive test suite
 
-```bash
-# View component logs
-kubectl logs -n traefik -l app.kubernetes.io/name=traefik
-kubectl logs -n harbor -l app=harbor
-kubectl logs -n metallb-system -l app=metallb
+## 🤝 Contributing
 
-# Check events for issues
-kubectl get events --all-namespaces --sort-by='.lastTimestamp'
-```
+This is a homelab project demonstrating enterprise DevOps practices. Feel free to:
 
-## Security Considerations
+- Fork the repository
+- Submit improvements
+- Report issues
+- Share feedback
 
-### Current Configuration
+## 📄 License
 
-- **Harbor**: HTTP only (development setup)
-- **Traefik**: Insecure dashboard enabled
-- **No RBAC**: Default service account permissions
-
-### Production Hardening (Future)
-
-- Enable TLS for all services
-- Configure proper RBAC
-- Secure dashboard access
-- Network policies implementation
-
-## Resource Usage
-
-### Current Allocation
-
-| Component | CPU Request | Memory Request | Storage |
-|-----------|-------------|----------------|---------|
-| MetalLB | 100m | 100Mi | - |
-| Traefik | 100m | 128Mi | 128Mi |
-| Harbor | ~1000m | ~2Gi | 12Gi |
-| cert-manager | 100m | 150Mi | - |
-
-### Monitoring Resource Usage
-
-```bash
-# Check node resources
-kubectl top nodes
-
-# Check pod resources
-kubectl top pods --all-namespaces
-
-# View resource requests/limits
-kubectl describe nodes
-```
-
-## Next Steps (Phase 3)
-
-1. **ArgoCD Installation**: GitOps engine deployment
-2. **Git Repository Setup**: Infrastructure and application repositories
-3. **CI/CD Pipeline**: GitHub Actions integration
-4. **Application Deployment**: Sample applications via GitOps
-
-## Support and Contributing
-
-### Getting Help
-
-- Check logs using kubectl commands above
-- Review Makefile targets for common operations
-- Use `make status` for health checks
-
-### File Structure
-
-- **manifests/**: Kubernetes YAML manifests
-- **scripts/**: Automation and setup scripts
-- **docs/**: Additional documentation
-- **Makefile**: Primary automation interface
+This project is for educational and demonstration purposes.
 
 ---
 
-**Phase 2 Status**: ✅ Complete  
-**Next Phase**: Phase 3 - GitOps & CI/CD Pipeline  
-**Project Repository**: k3s DevOps Pipeline Implementation
+**🏆 Enterprise-Grade k3s DevOps Pipeline - Fully Automated with Infrastructure as Code**
+
+**Repository**: https://github.com/screwlewse/homelab  
+**Infrastructure**: Terraform + k3s + GitOps  
+**Automation**: 100% Infrastructure as Code
