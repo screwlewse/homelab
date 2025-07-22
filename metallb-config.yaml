@@ -1,1 +1,26 @@
 
+# metallb-config.yaml
+# MetalLB IP address pool and L2 advertisement configuration
+
+apiVersion: metallb.io/v1beta1
+kind: IPAddressPool
+metadata:
+  name: default-pool
+  namespace: metallb-system
+spec:
+  addresses:
+  - 10.0.0.200-10.0.0.210
+  autoAssign: true
+---
+apiVersion: metallb.io/v1beta1
+kind: L2Advertisement
+metadata:
+  name: default-advertisement
+  namespace: metallb-system
+spec:
+  ipAddressPools:
+  - default-pool
+  interfaces:
+  - eth0
+  - ens160
+  - enp0s3
