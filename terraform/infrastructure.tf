@@ -72,3 +72,32 @@ module "argocd" {
   nodeport         = var.nodeport_range.argocd
   server_insecure  = var.argocd_config.server_insecure
 }
+
+# Monitoring Stack (Prometheus + Grafana + AlertManager)
+module "monitoring" {
+  count = var.enable_components.monitoring ? 1 : 0
+  
+  source = "./modules/monitoring"
+  
+  server_ip = var.server_ip
+  
+  # Service NodePorts
+  prometheus_nodeport   = var.nodeport_range.prometheus
+  grafana_nodeport      = var.nodeport_range.grafana
+  alertmanager_nodeport = var.nodeport_range.alertmanager
+  
+  # Configuration
+  grafana_admin_password = var.monitoring_config.grafana_admin_password
+  prometheus_retention   = var.monitoring_config.prometheus_retention
+  prometheus_storage_size = var.monitoring_config.prometheus_storage_size
+  grafana_storage_size    = var.monitoring_config.grafana_storage_size
+  
+  # Ensure monitoring deploys after core infrastructure
+  depends_on = [
+    module.metallb,
+    module.traefik,
+    module.cert_manager,
+    module.harbor,
+    module.argocd
+  ]
+}

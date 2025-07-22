@@ -32,6 +32,9 @@ variable "nodeport_range" {
     traefik_dashboard = number
     harbor            = number
     argocd            = number
+    prometheus        = number
+    grafana           = number
+    alertmanager      = number
   })
   default = {
     traefik_http      = 30080
@@ -39,6 +42,9 @@ variable "nodeport_range" {
     traefik_dashboard = 30900
     harbor            = 30880
     argocd            = 30808
+    prometheus        = 30909
+    grafana           = 30300
+    alertmanager      = 30903
   }
 }
 
@@ -65,6 +71,23 @@ variable "argocd_config" {
   }
 }
 
+variable "monitoring_config" {
+  description = "Monitoring stack configuration"
+  type = object({
+    grafana_admin_password  = string
+    prometheus_retention    = string
+    prometheus_storage_size = string
+    grafana_storage_size    = string
+  })
+  default = {
+    grafana_admin_password  = "admin123"
+    prometheus_retention    = "30d"
+    prometheus_storage_size = "20Gi"
+    grafana_storage_size    = "2Gi"
+  }
+  sensitive = true
+}
+
 variable "enable_components" {
   description = "Enable/disable infrastructure components"
   type = object({
@@ -73,6 +96,7 @@ variable "enable_components" {
     harbor       = bool
     cert_manager = bool
     argocd       = bool
+    monitoring   = bool
   })
   default = {
     metallb      = true
@@ -80,5 +104,6 @@ variable "enable_components" {
     harbor       = true
     cert_manager = true
     argocd       = true
+    monitoring   = true
   }
 }

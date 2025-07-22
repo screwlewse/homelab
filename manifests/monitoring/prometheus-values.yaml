@@ -1,0 +1,146 @@
+# Prometheus Stack Values for k3s DevOps Pipeline
+# Optimized for single-node homelab setup
+
+# Global settings
+nameOverride: ""
+fullnameOverride: ""
+
+# Prometheus configuration
+prometheus:
+  prometheusSpec:
+    replicas: 1
+    retention: 30d
+    retentionSize: 10GB
+    storageSpec:
+      volumeClaimTemplate:
+        spec:
+          accessModes: ["ReadWriteOnce"]
+          resources:
+            requests:
+              storage: 20Gi
+    resources:
+      requests:
+        memory: 512Mi
+        cpu: 100m
+      limits:
+        memory: 2Gi
+        cpu: 1000m
+    nodeSelector:
+      kubernetes.io/os: linux
+
+  # NodePort service for Prometheus UI
+  service:
+    type: NodePort
+    nodePort: 30909
+
+# Grafana configuration
+grafana:
+  enabled: true
+  adminPassword: admin123
+  
+  # NodePort service for Grafana UI
+  service:
+    type: NodePort
+    nodePort: 30300
+  
+  # Persistent storage
+  persistence:
+    enabled: true
+    size: 2Gi
+    accessModes:
+      - ReadWriteOnce
+  
+  # Resource limits
+  resources:
+    requests:
+      memory: 128Mi
+      cpu: 50m
+    limits:
+      memory: 512Mi
+      cpu: 500m
+  
+  # Pre-installed dashboards
+  defaultDashboardsEnabled: true
+  
+  # Grafana.ini configuration
+  grafana.ini:
+    server:
+      domain: 10.0.0.88:30300
+      root_url: http://10.0.0.88:30300
+    security:
+      allow_embedding: true
+    auth.anonymous:
+      enabled: true
+      org_role: Viewer
+
+# AlertManager configuration
+alertmanager:
+  alertmanagerSpec:
+    replicas: 1
+    storage:
+      volumeClaimTemplate:
+        spec:
+          accessModes: ["ReadWriteOnce"]
+          resources:
+            requests:
+              storage: 2Gi
+    resources:
+      requests:
+        memory: 64Mi
+        cpu: 25m
+      limits:
+        memory: 256Mi
+        cpu: 200m
+
+  # NodePort service for AlertManager UI
+  service:
+    type: NodePort
+    nodePort: 30903
+
+# Node Exporter (metrics from nodes)
+nodeExporter:
+  enabled: true
+
+# kube-state-metrics (Kubernetes object metrics)
+kubeStateMetrics:
+  enabled: true
+
+# Prometheus Operator
+prometheusOperator:
+  enabled: true
+  resources:
+    requests:
+      memory: 64Mi
+      cpu: 25m
+    limits:
+      memory: 256Mi
+      cpu: 200m
+
+# Disable components not needed for single-node setup
+kubeApiServer:
+  enabled: true
+
+kubelet:
+  enabled: true
+
+kubeControllerManager:
+  enabled: false  # Not accessible in k3s
+
+kubeScheduler:
+  enabled: false  # Not accessible in k3s
+
+kubeProxy:
+  enabled: false  # k3s uses different networking
+
+kubeEtcd:
+  enabled: false  # k3s uses SQLite by default
+
+# Service monitors for our applications
+additionalServiceMonitors:
+  - name: traefik-metrics
+    selector:
+      matchLabels:
+        app.kubernetes.io/name: traefik
+    endpoints:
+      - port: traefik
+        path: /metrics
