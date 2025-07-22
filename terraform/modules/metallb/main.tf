@@ -1,5 +1,14 @@
 # MetalLB Load Balancer Terraform Module
 
+terraform {
+  required_providers {
+    kubectl = {
+      source  = "gavinbunney/kubectl"
+      version = "~> 1.14"
+    }
+  }
+}
+
 resource "kubernetes_namespace" "metallb_system" {
   metadata {
     name = "metallb-system"

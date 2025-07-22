@@ -1,5 +1,14 @@
 # cert-manager Terraform Module
 
+terraform {
+  required_providers {
+    kubectl = {
+      source  = "gavinbunney/kubectl"
+      version = "~> 1.14"
+    }
+  }
+}
+
 resource "kubernetes_namespace" "cert_manager" {
   metadata {
     name = "cert-manager"
