@@ -1,0 +1,39 @@
+# Git commit message linting rules
+
+[general]
+# Ignore specific commits (e.g., merge commits)
+ignore=merge-commit
+
+# Subject line rules
+[title-max-length]
+line-length=72
+
+[title-trailing-whitespace]
+
+[title-leading-whitespace]
+
+[title-must-not-contain-word]
+words=wip,WIP
+
+[title-match-regex]
+# Enforce conventional commits format
+regex=^(feat|fix|docs|style|refactor|test|chore|perf|ci|build|revert)(\(.+\))?: .+$
+
+# Body rules
+[body-max-line-length]
+line-length=80
+
+[body-min-length]
+min-length=10
+
+[body-is-missing]
+ignore=merge-commit
+
+# Custom rules
+[ignore-by-title]
+regex=^(Merge|Revert)
+ignore=all
+
+[ignore-by-author-name]
+regex=^(dependabot|renovate)
+ignore=all

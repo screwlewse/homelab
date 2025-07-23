@@ -1,0 +1,29 @@
+# tfsec configuration for k8s-devops-pipeline
+
+# Minimum severity level
+minimum_severity: MEDIUM
+
+# Exclude specific checks
+exclude:
+  # Allow HTTP for homelab setup
+  - kubernetes-network-no-public-ingress
+  - kubernetes-network-no-public-services
+  
+  # Allow permissive security contexts for development
+  - kubernetes-security-no-run-as-root
+  - kubernetes-security-use-security-context
+  
+  # Allow default namespace for simple deployments
+  - kubernetes-general-default-namespace
+  
+  # Allow basic resource limits for homelab
+  - kubernetes-general-cpu-limit
+  - kubernetes-general-memory-limit
+
+# Custom check configurations
+custom_check_dir: .tfsec/custom_checks
+
+# Severity overrides for specific checks
+severity_overrides:
+  kubernetes-security-drop-capabilities: LOW
+  kubernetes-security-limit-capabilities: LOW

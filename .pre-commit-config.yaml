@@ -1,0 +1,154 @@
+# Pre-commit hooks for k8s-devops-pipeline
+# Run: pre-commit install
+# Manual run: pre-commit run --all-files
+
+default_stages: [commit]
+fail_fast: false
+minimum_pre_commit_version: "3.0.0"
+
+repos:
+  # General file checks
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v4.5.0
+    hooks:
+      - id: trailing-whitespace
+        exclude: \.md$
+      - id: end-of-file-fixer
+        exclude: \.md$
+      - id: check-yaml
+        args: [--allow-multiple-documents]
+        exclude: ^manifests/.*\.yaml$  # Exclude Helm templates
+      - id: check-json
+      - id: check-added-large-files
+        args: ['--maxkb=1000']
+      - id: check-case-conflict
+      - id: check-merge-conflict
+      - id: check-executables-have-shebangs
+      - id: check-shebang-scripts-are-executable
+      - id: detect-private-key
+      - id: mixed-line-ending
+        args: ['--fix=lf']
+      - id: no-commit-to-branch
+        args: ['--branch', 'main', '--branch', 'master']
+
+  # Shell script linting
+  - repo: https://github.com/shellcheck-py/shellcheck-py
+    rev: v0.10.0.1
+    hooks:
+      - id: shellcheck
+        args: ['-x', '--severity=warning']
+        files: \.sh$
+        exclude: ^(node_modules|\.git)/
+
+  # Terraform formatting and validation
+  - repo: https://github.com/antonbabenko/pre-commit-terraform
+    rev: v1.88.0
+    hooks:
+      - id: terraform_fmt
+        args:
+          - --args=-recursive
+          - --args=-diff
+      - id: terraform_validate
+        args:
+          - --init-args=-backend=false
+          - --args=-json
+          - --args=-no-color
+      - id: terraform_docs
+        args:
+          - --hook-config=--path-to-file=README.md
+          - --hook-config=--add-to-existing-file=true
+          - --hook-config=--create-file-if-not-exist=true
+      - id: terraform_tflint
+        args:
+          - --args=--config=__GIT_WORKING_DIR__/.tflint.hcl
+
+  # Security scanning for Terraform
+  - repo: https://github.com/aquasecurity/tfsec
+    rev: v1.28.5
+    hooks:
+      - id: tfsec
+        args:
+          - --soft-fail
+          - --config-file=.tfsec.yml
+
+  # YAML linting
+  - repo: https://github.com/adrienverge/yamllint
+    rev: v1.35.1
+    hooks:
+      - id: yamllint
+        args: [-c=.yamllint.yml]
+        exclude: ^(node_modules|\.git)/
+
+  # Markdown linting
+  - repo: https://github.com/igorshubovych/markdownlint-cli
+    rev: v0.39.0
+    hooks:
+      - id: markdownlint
+        args: ['--config', '.markdownlint.yml']
+        exclude: ^(node_modules|\.git)/
+
+  # Git commit message linting
+  - repo: https://github.com/jorisroovers/gitlint
+    rev: v0.19.1
+    hooks:
+      - id: gitlint
+
+  # Secrets detection
+  - repo: https://github.com/Yelp/detect-secrets
+    rev: v1.4.0
+    hooks:
+      - id: detect-secrets
+        args: ['--baseline', '.secrets.baseline']
+        exclude: .*\.lock$|package-lock\.json$
+
+  # Dockerfile linting (when needed)
+  - repo: https://github.com/hadolint/hadolint
+    rev: v2.12.0
+    hooks:
+      - id: hadolint
+        args: ['--ignore', 'DL3008', '--ignore', 'DL3009']
+
+  # Python code formatting (for test scripts)
+  - repo: https://github.com/psf/black
+    rev: 24.2.0
+    hooks:
+      - id: black
+        language_version: python3.11
+        files: \.py$
+
+  # Check for merge conflicts
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v4.5.0
+    hooks:
+      - id: check-merge-conflict
+        args: ['--assume-in-merge']
+
+  # Custom script hooks
+  - repo: local
+    hooks:
+      - id: terraform-security-scan
+        name: Terraform Security Scan
+        entry: bash -c 'cd terraform && terraform init -backend=false && tfsec .'
+        language: system
+        files: \.tf$
+        pass_filenames: false
+
+      - id: validate-makefile
+        name: Validate Makefile
+        entry: make -n help
+        language: system
+        files: ^Makefile$
+        pass_filenames: false
+
+      - id: check-todos
+        name: Check for TODO comments
+        entry: bash -c 'if grep -r "TODO\|FIXME\|XXX" --include="*.sh" --include="*.tf" --include="*.yaml" . 2>/dev/null; then echo "Found TODO/FIXME comments - please address them"; exit 1; fi || exit 0'
+        language: system
+        pass_filenames: false
+
+      - id: validate-shell-error-handling
+        name: Validate Shell Error Handling
+        entry: bash -c 'for f in $(find . -name "*.sh" -type f); do if ! grep -q "set -euo pipefail" "$f"; then echo "$f missing proper error handling"; exit 1; fi; done'
+        language: system
+        files: \.sh$
+        pass_filenames: false

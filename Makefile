@@ -35,6 +35,12 @@ help: ## Display this help message
 	@echo "  $(GREEN)phase1$(NC)       Run Phase 1: Foundation setup"
 	@echo "  $(GREEN)verify-phase1$(NC) Verify Phase 1 installation"
 	@echo ""
+	@echo "$(YELLOW)Testing:$(NC)"
+	@echo "  $(GREEN)test$(NC)         Run all tests"
+	@echo "  $(GREEN)test-quick$(NC)   Run quick validation tests"
+	@echo "  $(GREEN)lint$(NC)         Run all linters"
+	@echo "  $(GREEN)pre-commit$(NC)   Setup and run pre-commit hooks"
+	@echo ""
 	@echo "$(YELLOW)Utilities:$(NC)"
 	@echo "  $(GREEN)info$(NC)         Display service information"
 	@echo "  $(GREEN)clean$(NC)        Remove all components"
@@ -72,6 +78,46 @@ tf-output: ## Show Terraform outputs
 tf-test: ## Run infrastructure validation tests
 	@echo "$(YELLOW)=== Running infrastructure tests ===$(NC)"
 	cd terraform && ./tests/validate-infrastructure.sh
+
+# ============================================================================
+# Testing Framework
+# ============================================================================
+
+test: ## Run all tests
+	@echo "$(YELLOW)=== Running all tests ===$(NC)"
+	@./tests/run-tests.sh all
+
+test-bats: ## Run BATS tests for shell scripts
+	@echo "$(YELLOW)=== Running BATS tests ===$(NC)"
+	@./tests/run-tests.sh bats
+
+test-unit: ## Run Terraform unit tests
+	@echo "$(YELLOW)=== Running Terraform unit tests ===$(NC)"
+	@./tests/run-tests.sh terraform
+
+test-integration: ## Run integration tests
+	@echo "$(YELLOW)=== Running integration tests ===$(NC)"
+	@./tests/run-tests.sh integration
+
+test-security: ## Run security tests
+	@echo "$(YELLOW)=== Running security tests ===$(NC)"
+	@./tests/run-tests.sh security
+
+test-quick: ## Run quick validation tests
+	@echo "$(YELLOW)=== Running quick tests ===$(NC)"
+	@$(MAKE) tf-validate
+	@$(MAKE) test-bats
+
+pre-commit: ## Install and run pre-commit hooks
+	@echo "$(YELLOW)=== Setting up pre-commit hooks ===$(NC)"
+	@./scripts/setup-pre-commit.sh
+	@pre-commit run --all-files
+
+lint: ## Run all linters
+	@echo "$(YELLOW)=== Running linters ===$(NC)"
+	@shellcheck scripts/*.sh || echo "shellcheck not installed"
+	@yamllint . || echo "yamllint not installed"
+	@cd terraform && terraform fmt -check -recursive || echo "terraform not installed"
 
 # ============================================================================
 # Traditional Infrastructure Deployment

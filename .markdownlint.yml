@@ -1,0 +1,39 @@
+# Markdown linting rules for k8s-devops-pipeline
+default: true
+
+# Line length
+MD013:
+  line_length: 120
+  code_blocks: false
+  tables: false
+  headings: false
+
+# Allow inline HTML
+MD033: false
+
+# Allow bare URLs
+MD034: false
+
+# First line in file should be a top level heading
+MD041: false
+
+# Lists
+MD004:
+  style: consistent
+
+MD007:
+  indent: 2
+
+# Code block style
+MD046:
+  style: fenced
+
+# Emphasis style
+MD049:
+  style: underscore
+
+MD050:
+  style: asterisk
+
+# Allow duplicate headings
+MD024: false

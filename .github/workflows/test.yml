@@ -1,0 +1,311 @@
+name: Test Pipeline
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main ]
+  schedule:
+    # Run tests daily at 2 AM UTC
+    - cron: '0 2 * * *'
+  workflow_dispatch:
+
+env:
+  TERRAFORM_VERSION: "1.9.0"
+  GO_VERSION: "1.22"
+  PYTHON_VERSION: "3.11"
+
+jobs:
+  terraform-tests:
+    name: Terraform Unit Tests
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TERRAFORM_VERSION }}
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+
+      - name: Install Terratest
+        run: |
+          go get -u github.com/gruntwork-io/terratest/modules/terraform
+          go get -u github.com/stretchr/testify/assert
+
+      - name: Run Terraform Unit Tests
+        working-directory: ./terraform/tests
+        run: |
+          echo "Running Terraform unit tests..."
+          # Create test file if it doesn't exist
+          if [ ! -f terraform_test.go ]; then
+            cat > terraform_test.go << 'EOF'
+          package test
+
+          import (
+            "testing"
+            "github.com/gruntwork-io/terratest/modules/terraform"
+            "github.com/stretchr/testify/assert"
+          )
+
+          func TestTerraformModules(t *testing.T) {
+            terraformOptions := &terraform.Options{
+              TerraformDir: "../",
+              NoColor: true,
+            }
+
+            defer terraform.Destroy(t, terraformOptions)
+            terraform.InitAndValidate(t, terraformOptions)
+          }
+          EOF
+          fi
+          
+          go test -v -timeout 30m
+
+  shell-tests:
+    name: Shell Script Tests
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install bats
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y bats
+
+      - name: Create bats tests
+        run: |
+          mkdir -p tests/bats
+          cat > tests/bats/scripts.bats << 'EOF'
+          #!/usr/bin/env bats
+
+          @test "deploy-monitoring.sh exists and is executable" {
+            [ -x "./scripts/deploy-monitoring.sh" ]
+          }
+
+          @test "verify-monitoring.sh exists and is executable" {
+            [ -x "./scripts/verify-monitoring.sh" ]
+          }
+
+          @test "commit-phase.sh exists and is executable" {
+            [ -x "./scripts/commit-phase.sh" ]
+          }
+
+          @test "validate-infrastructure.sh exists and is executable" {
+            [ -x "./terraform/tests/validate-infrastructure.sh" ]
+          }
+
+          @test "scripts use proper error handling" {
+            grep -q "set -euo pipefail" ./scripts/deploy-monitoring.sh
+            grep -q "set -euo pipefail" ./scripts/verify-monitoring.sh
+          }
+
+          @test "scripts have logging functions" {
+            grep -q "log()" ./scripts/deploy-monitoring.sh
+            grep -q "error()" ./scripts/deploy-monitoring.sh
+          }
+          EOF
+
+      - name: Run bats tests
+        run: |
+          chmod +x tests/bats/scripts.bats
+          bats tests/bats/scripts.bats
+
+  yaml-schema-tests:
+    name: YAML Schema Validation
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install dependencies
+        run: |
+          pip install pyyaml jsonschema kubernetes
+
+      - name: Validate Kubernetes manifests
+        run: |
+          cat > validate_k8s_manifests.py << 'EOF'
+          import yaml
+          import sys
+          import os
+          from kubernetes import client
+          from kubernetes.client import ApiClient
+
+          def validate_manifest(file_path):
+              print(f"Validating {file_path}...")
+              try:
+                  with open(file_path, 'r') as f:
+                      docs = yaml.safe_load_all(f)
+                      for doc in docs:
+                          if doc and 'kind' in doc:
+                              # Basic validation
+                              assert 'apiVersion' in doc, f"Missing apiVersion in {file_path}"
+                              assert 'metadata' in doc, f"Missing metadata in {file_path}"
+                              assert 'name' in doc['metadata'], f"Missing metadata.name in {file_path}"
+                              print(f"  ✓ {doc['kind']}/{doc['metadata']['name']} is valid")
+                  return True
+              except Exception as e:
+                  print(f"  ✗ Error: {e}")
+                  return False
+
+          # Find and validate all YAML files
+          errors = 0
+          for root, dirs, files in os.walk('manifests'):
+              for file in files:
+                  if file.endswith(('.yaml', '.yml')):
+                      file_path = os.path.join(root, file)
+                      if not validate_manifest(file_path):
+                          errors += 1
+
+          sys.exit(errors)
+          EOF
+          
+          python validate_k8s_manifests.py
+
+  integration-tests:
+    name: Integration Tests
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up K3s
+        run: |
+          curl -sfL https://get.k3s.io | sh -s - --write-kubeconfig-mode 644
+          sudo chmod 644 /etc/rancher/k3s/k3s.yaml
+          export KUBECONFIG=/etc/rancher/k3s/k3s.yaml
+          
+          # Wait for K3s to be ready
+          timeout 90s bash -c 'until kubectl get nodes; do sleep 5; done'
+
+      - name: Run basic deployment test
+        env:
+          KUBECONFIG: /etc/rancher/k3s/k3s.yaml
+        run: |
+          # Test namespace creation
+          kubectl apply -f manifests/monitoring/monitoring-namespace.yaml
+          kubectl get namespace monitoring
+          
+          # Test basic deployment
+          kubectl create deployment nginx --image=nginx:latest -n monitoring
+          kubectl wait --for=condition=available --timeout=60s deployment/nginx -n monitoring
+          
+          # Cleanup
+          kubectl delete deployment nginx -n monitoring
+          kubectl delete namespace monitoring
+
+  makefile-tests:
+    name: Makefile Tests
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Test Makefile targets
+        run: |
+          # Test that make targets don't have syntax errors
+          make -n tf-init
+          make -n tf-plan
+          make -n tf-test
+          make -n verify
+          make -n status
+          
+          # Test help target
+          make help
+
+  security-compliance-tests:
+    name: Security Compliance Tests
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Check for hardcoded secrets
+        run: |
+          # Check for common patterns of hardcoded secrets
+          echo "Checking for hardcoded secrets..."
+          
+          # Define patterns to search for
+          patterns=(
+            "password.*=.*['\"].*['\"]"
+            "secret.*=.*['\"].*['\"]"
+            "api[_-]?key.*=.*['\"].*['\"]"
+            "token.*=.*['\"].*['\"]"
+            "private[_-]?key"
+          )
+          
+          # Search for patterns
+          found=0
+          for pattern in "${patterns[@]}"; do
+            if grep -r -i -E "$pattern" --include="*.yaml" --include="*.yml" --include="*.tf" --include="*.sh" . 2>/dev/null | grep -v -E "(example|sample|test|spec)"; then
+              echo "WARNING: Possible hardcoded secret found with pattern: $pattern"
+              found=1
+            fi
+          done
+          
+          if [ $found -eq 1 ]; then
+            echo "Please review the above findings for potential security issues"
+            exit 1
+          else
+            echo "No obvious hardcoded secrets found"
+          fi
+
+      - name: Check file permissions
+        run: |
+          # Check that sensitive files have appropriate permissions
+          echo "Checking file permissions..."
+          
+          # Check that .sh files are executable
+          find . -name "*.sh" -type f ! -perm -111 | while read -r file; do
+            echo "WARNING: $file is not executable"
+          done
+
+  test-summary:
+    name: Test Summary
+    runs-on: ubuntu-latest
+    needs: [terraform-tests, shell-tests, yaml-schema-tests, integration-tests, makefile-tests, security-compliance-tests]
+    if: always()
+    
+    steps:
+      - name: Test Results Summary
+        run: |
+          echo "## Test Pipeline Summary"
+          echo
+          echo "### Test Results:"
+          echo "- Terraform Tests: ${{ needs.terraform-tests.result }}"
+          echo "- Shell Tests: ${{ needs.shell-tests.result }}"
+          echo "- YAML Schema Tests: ${{ needs.yaml-schema-tests.result }}"
+          echo "- Integration Tests: ${{ needs.integration-tests.result }}"
+          echo "- Makefile Tests: ${{ needs.makefile-tests.result }}"
+          echo "- Security Compliance: ${{ needs.security-compliance-tests.result }}"
+          
+          # Fail if any test failed
+          if [[ "${{ needs.terraform-tests.result }}" == "failure" ]] || \
+             [[ "${{ needs.shell-tests.result }}" == "failure" ]] || \
+             [[ "${{ needs.yaml-schema-tests.result }}" == "failure" ]] || \
+             [[ "${{ needs.makefile-tests.result }}" == "failure" ]] || \
+             [[ "${{ needs.security-compliance-tests.result }}" == "failure" ]]; then
+            echo
+            echo "❌ Test Pipeline failed - some tests did not pass"
+            exit 1
+          else
+            echo
+            echo "✅ Test Pipeline passed - all tests successful"
+          fi

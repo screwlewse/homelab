@@ -1,0 +1,239 @@
+name: CD Pipeline
+
+on:
+  push:
+    branches: [ main ]
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Environment to deploy to'
+        required: true
+        default: 'dev'
+        type: choice
+        options:
+          - dev
+          - staging
+          - prod
+      terraform_action:
+        description: 'Terraform action to perform'
+        required: true
+        default: 'plan'
+        type: choice
+        options:
+          - plan
+          - apply
+          - destroy
+
+env:
+  TERRAFORM_VERSION: "1.9.0"
+  KUBECTL_VERSION: "1.32.0"
+  HELM_VERSION: "3.14.0"
+
+jobs:
+  terraform-deployment:
+    name: Terraform Deployment
+    runs-on: ubuntu-latest
+    environment: ${{ github.event.inputs.environment || 'dev' }}
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TERRAFORM_VERSION }}
+
+      - name: Configure kubectl
+        run: |
+          echo "Installing kubectl..."
+          curl -LO "https://dl.k8s.io/release/v${{ env.KUBECTL_VERSION }}/bin/linux/amd64/kubectl"
+          curl -LO "https://dl.k8s.io/release/v${{ env.KUBECTL_VERSION }}/bin/linux/amd64/kubectl.sha256"
+          echo "$(cat kubectl.sha256)  kubectl" | sha256sum --check
+          sudo install -o root -g root -m 0755 kubectl /usr/local/bin/kubectl
+
+      - name: Configure Helm
+        run: |
+          echo "Installing Helm..."
+          curl -fsSL -o get_helm.sh https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3
+          chmod 700 get_helm.sh
+          ./get_helm.sh --version v${{ env.HELM_VERSION }}
+
+      - name: Configure kubeconfig
+        env:
+          KUBECONFIG_BASE64: ${{ secrets.KUBECONFIG_BASE64 }}
+        run: |
+          mkdir -p ~/.kube
+          echo "$KUBECONFIG_BASE64" | base64 -d > ~/.kube/config
+          chmod 600 ~/.kube/config
+          kubectl cluster-info
+
+      - name: Setup Terraform Backend
+        working-directory: ./terraform
+        run: |
+          # For production, use remote backend (S3, GCS, etc.)
+          # For now, using local backend
+          terraform init
+
+      - name: Select Terraform Workspace
+        working-directory: ./terraform
+        run: |
+          terraform workspace select ${{ github.event.inputs.environment || 'dev' }} || \
+          terraform workspace new ${{ github.event.inputs.environment || 'dev' }}
+
+      - name: Terraform Plan
+        if: github.event.inputs.terraform_action != 'destroy'
+        working-directory: ./terraform
+        run: |
+          terraform plan \
+            -var-file="environments/${{ github.event.inputs.environment || 'dev' }}.tfvars" \
+            -out=tfplan
+
+      - name: Terraform Apply
+        if: github.event.inputs.terraform_action == 'apply' || (github.ref_type == 'tag' && github.event.inputs.terraform_action != 'destroy')
+        working-directory: ./terraform
+        run: |
+          terraform apply -auto-approve tfplan
+
+      - name: Terraform Destroy Plan
+        if: github.event.inputs.terraform_action == 'destroy'
+        working-directory: ./terraform
+        run: |
+          terraform plan -destroy \
+            -var-file="environments/${{ github.event.inputs.environment || 'dev' }}.tfvars" \
+            -out=tfplan-destroy
+
+      - name: Terraform Destroy
+        if: github.event.inputs.terraform_action == 'destroy'
+        working-directory: ./terraform
+        run: |
+          echo "⚠️ WARNING: Destroying infrastructure in ${{ github.event.inputs.environment }}"
+          terraform apply -destroy -auto-approve tfplan-destroy
+
+      - name: Run Infrastructure Tests
+        if: github.event.inputs.terraform_action == 'apply' || github.ref_type == 'tag'
+        run: |
+          chmod +x ./terraform/tests/validate-infrastructure.sh
+          ./terraform/tests/validate-infrastructure.sh
+
+      - name: Upload Terraform State
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: terraform-state-${{ github.event.inputs.environment || 'dev' }}
+          path: |
+            terraform/*.tfstate
+            terraform/*.tfstate.backup
+          retention-days: 30
+
+  gitops-sync:
+    name: GitOps Sync
+    runs-on: ubuntu-latest
+    needs: terraform-deployment
+    if: github.event.inputs.terraform_action == 'apply' || github.ref_type == 'tag'
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Configure kubectl
+        env:
+          KUBECONFIG_BASE64: ${{ secrets.KUBECONFIG_BASE64 }}
+        run: |
+          mkdir -p ~/.kube
+          echo "$KUBECONFIG_BASE64" | base64 -d > ~/.kube/config
+          chmod 600 ~/.kube/config
+
+      - name: Install ArgoCD CLI
+        run: |
+          curl -sSL -o /usr/local/bin/argocd https://github.com/argoproj/argo-cd/releases/latest/download/argocd-linux-amd64
+          chmod +x /usr/local/bin/argocd
+
+      - name: Login to ArgoCD
+        env:
+          ARGOCD_SERVER: ${{ secrets.ARGOCD_SERVER }}
+          ARGOCD_PASSWORD: ${{ secrets.ARGOCD_PASSWORD }}
+        run: |
+          argocd login $ARGOCD_SERVER \
+            --username admin \
+            --password $ARGOCD_PASSWORD \
+            --insecure \
+            --grpc-web
+
+      - name: Sync ArgoCD Applications
+        run: |
+          echo "Syncing ArgoCD applications..."
+          argocd app sync app-of-apps \
+            --force \
+            --prune \
+            --timeout 300
+
+          echo "Waiting for sync to complete..."
+          argocd app wait app-of-apps \
+            --health \
+            --sync \
+            --timeout 600
+
+      - name: List ArgoCD Applications
+        run: |
+          echo "Current ArgoCD applications:"
+          argocd app list
+
+  notify:
+    name: Deployment Notification
+    runs-on: ubuntu-latest
+    needs: [terraform-deployment, gitops-sync]
+    if: always()
+    
+    steps:
+      - name: Send Notification
+        env:
+          SLACK_WEBHOOK: ${{ secrets.SLACK_WEBHOOK }}
+        run: |
+          # Determine deployment status
+          if [[ "${{ needs.terraform-deployment.result }}" == "success" ]] && \
+             [[ "${{ needs.gitops-sync.result }}" == "success" || "${{ needs.gitops-sync.result }}" == "skipped" ]]; then
+            STATUS="✅ Success"
+            COLOR="good"
+          else
+            STATUS="❌ Failed"
+            COLOR="danger"
+          fi
+          
+          # Send Slack notification (if webhook is configured)
+          if [[ -n "$SLACK_WEBHOOK" ]]; then
+            curl -X POST $SLACK_WEBHOOK \
+              -H 'Content-type: application/json' \
+              --data "{
+                \"attachments\": [{
+                  \"color\": \"$COLOR\",
+                  \"title\": \"Deployment Status: $STATUS\",
+                  \"fields\": [
+                    {
+                      \"title\": \"Environment\",
+                      \"value\": \"${{ github.event.inputs.environment || 'dev' }}\",
+                      \"short\": true
+                    },
+                    {
+                      \"title\": \"Action\",
+                      \"value\": \"${{ github.event.inputs.terraform_action || 'apply' }}\",
+                      \"short\": true
+                    },
+                    {
+                      \"title\": \"Triggered By\",
+                      \"value\": \"${{ github.actor }}\",
+                      \"short\": true
+                    },
+                    {
+                      \"title\": \"Ref\",
+                      \"value\": \"${{ github.ref }}\",
+                      \"short\": true
+                    }
+                  ]
+                }]
+              }"
+          else
+            echo "Slack webhook not configured, skipping notification"
+          fi

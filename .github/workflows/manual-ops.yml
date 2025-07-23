@@ -1,0 +1,213 @@
+name: Manual Operations
+
+on:
+  workflow_dispatch:
+    inputs:
+      operation:
+        description: 'Operation to perform'
+        required: true
+        type: choice
+        options:
+          - backup-state
+          - restore-state
+          - validate-infrastructure
+          - sync-argocd
+          - restart-deployments
+          - cleanup-resources
+      namespace:
+        description: 'Namespace (for restart/cleanup operations)'
+        required: false
+        default: 'all'
+      confirm:
+        description: 'Type "confirm" to proceed with destructive operations'
+        required: false
+
+env:
+  KUBECTL_VERSION: "1.32.0"
+
+jobs:
+  manual-operation:
+    name: Execute Manual Operation
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Validate confirmation for destructive operations
+        if: contains(fromJSON('["cleanup-resources", "restore-state"]'), github.event.inputs.operation)
+        run: |
+          if [[ "${{ github.event.inputs.confirm }}" != "confirm" ]]; then
+            echo "❌ Confirmation required for destructive operations"
+            echo "Please type 'confirm' in the confirmation field"
+            exit 1
+          fi
+
+      - name: Configure kubectl
+        env:
+          KUBECONFIG_BASE64: ${{ secrets.KUBECONFIG_BASE64 }}
+        run: |
+          mkdir -p ~/.kube
+          echo "$KUBECONFIG_BASE64" | base64 -d > ~/.kube/config
+          chmod 600 ~/.kube/config
+          kubectl cluster-info
+
+      - name: Backup Terraform State
+        if: github.event.inputs.operation == 'backup-state'
+        run: |
+          echo "📦 Backing up Terraform state..."
+          cd terraform
+          
+          # Create backup directory
+          BACKUP_DIR="backups/$(date +%Y%m%d_%H%M%S)"
+          mkdir -p "$BACKUP_DIR"
+          
+          # Copy state files
+          cp -v *.tfstate* "$BACKUP_DIR/" 2>/dev/null || echo "No state files found"
+          
+          # Create backup metadata
+          cat > "$BACKUP_DIR/metadata.json" << EOF
+          {
+            "timestamp": "$(date -u +"%Y-%m-%dT%H:%M:%SZ")",
+            "triggered_by": "${{ github.actor }}",
+            "github_run_id": "${{ github.run_id }}",
+            "github_sha": "${{ github.sha }}"
+          }
+          EOF
+          
+          # Create tarball
+          tar -czf "terraform-state-backup-$(date +%Y%m%d_%H%M%S).tar.gz" "$BACKUP_DIR"
+          
+          echo "✅ State backup completed"
+
+      - name: Restore Terraform State
+        if: github.event.inputs.operation == 'restore-state'
+        run: |
+          echo "🔄 Restoring Terraform state..."
+          # This is a placeholder - implement based on your backup strategy
+          echo "⚠️ State restore requires manual intervention"
+          echo "Please download the backup artifact and restore manually"
+
+      - name: Validate Infrastructure
+        if: github.event.inputs.operation == 'validate-infrastructure'
+        run: |
+          echo "🔍 Validating infrastructure..."
+          chmod +x ./terraform/tests/validate-infrastructure.sh
+          ./terraform/tests/validate-infrastructure.sh
+          
+          # Additional validation
+          echo
+          echo "📊 Resource Summary:"
+          kubectl get nodes
+          echo
+          kubectl get namespaces
+          echo
+          kubectl get pods --all-namespaces | grep -v "Running\|Completed" || echo "All pods healthy"
+
+      - name: Sync ArgoCD Applications
+        if: github.event.inputs.operation == 'sync-argocd'
+        run: |
+          echo "🔄 Syncing ArgoCD applications..."
+          
+          # Install ArgoCD CLI
+          curl -sSL -o /usr/local/bin/argocd https://github.com/argoproj/argo-cd/releases/latest/download/argocd-linux-amd64
+          chmod +x /usr/local/bin/argocd
+          
+          # Get ArgoCD password
+          ARGOCD_PASSWORD=$(kubectl -n argocd get secret argocd-initial-admin-secret -o jsonpath="{.data.password}" | base64 -d)
+          
+          # Login to ArgoCD
+          argocd login localhost:30808 \
+            --username admin \
+            --password "$ARGOCD_PASSWORD" \
+            --insecure \
+            --grpc-web
+          
+          # Sync all applications
+          argocd app list -o name | while read -r app; do
+            echo "Syncing $app..."
+            argocd app sync "$app" --prune --force
+          done
+          
+          echo "✅ ArgoCD sync completed"
+
+      - name: Restart Deployments
+        if: github.event.inputs.operation == 'restart-deployments'
+        run: |
+          NAMESPACE="${{ github.event.inputs.namespace }}"
+          
+          if [[ "$NAMESPACE" == "all" ]]; then
+            echo "🔄 Restarting all deployments in all namespaces..."
+            kubectl get deployments --all-namespaces -o json | \
+              jq -r '.items[] | "\(.metadata.namespace) \(.metadata.name)"' | \
+              while read -r ns name; do
+                echo "Restarting $name in namespace $ns"
+                kubectl rollout restart deployment "$name" -n "$ns"
+              done
+          else
+            echo "🔄 Restarting deployments in namespace: $NAMESPACE"
+            kubectl get deployments -n "$NAMESPACE" -o name | while read -r deploy; do
+              echo "Restarting $deploy"
+              kubectl rollout restart "$deploy" -n "$NAMESPACE"
+            done
+          fi
+          
+          echo "✅ Deployment restart completed"
+
+      - name: Cleanup Resources
+        if: github.event.inputs.operation == 'cleanup-resources'
+        run: |
+          echo "🧹 Cleaning up resources..."
+          
+          # Clean up completed jobs
+          echo "Removing completed jobs..."
+          kubectl get jobs --all-namespaces -o json | \
+            jq -r '.items[] | select(.status.succeeded == 1) | "\(.metadata.namespace) \(.metadata.name)"' | \
+            while read -r ns name; do
+              echo "Deleting job $name in namespace $ns"
+              kubectl delete job "$name" -n "$ns"
+            done
+          
+          # Clean up failed pods
+          echo "Removing failed pods..."
+          kubectl get pods --all-namespaces --field-selector=status.phase=Failed -o json | \
+            jq -r '.items[] | "\(.metadata.namespace) \(.metadata.name)"' | \
+            while read -r ns name; do
+              echo "Deleting failed pod $name in namespace $ns"
+              kubectl delete pod "$name" -n "$ns"
+            done
+          
+          # Clean up evicted pods
+          echo "Removing evicted pods..."
+          kubectl get pods --all-namespaces -o json | \
+            jq -r '.items[] | select(.status.reason == "Evicted") | "\(.metadata.namespace) \(.metadata.name)"' | \
+            while read -r ns name; do
+              echo "Deleting evicted pod $name in namespace $ns"
+              kubectl delete pod "$name" -n "$ns"
+            done
+          
+          echo "✅ Cleanup completed"
+
+      - name: Upload Operation Results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: operation-results-${{ github.event.inputs.operation }}-${{ github.run_id }}
+          path: |
+            terraform/backups/
+            infrastructure-validation-report.md
+          retention-days: 30
+
+      - name: Operation Summary
+        if: always()
+        run: |
+          echo "## Manual Operation Summary"
+          echo
+          echo "**Operation:** ${{ github.event.inputs.operation }}"
+          echo "**Triggered by:** ${{ github.actor }}"
+          echo "**Status:** ${{ job.status }}"
+          echo "**Run ID:** ${{ github.run_id }}"
+          
+          if [[ "${{ github.event.inputs.namespace }}" != "" ]]; then
+            echo "**Namespace:** ${{ github.event.inputs.namespace }}"
+          fi

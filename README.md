@@ -4,6 +4,16 @@
 
 This repository contains a **production-grade k3s DevOps pipeline** with complete Infrastructure as Code (IaC) automation, GitOps workflows, and CI/CD integration. It implements enterprise-level DevOps practices on a single-node k3s cluster.
 
+## ✨ Recent Improvements
+
+- **Enhanced Code Quality**: All shell scripts now have proper error handling and logging
+- **CI/CD Automation**: Complete GitHub Actions workflows for testing and deployment
+- **Comprehensive Testing**: Unit, integration, and security tests with automated reporting
+- **Pre-commit Hooks**: Automated code quality checks before commits
+- **Security Scanning**: Integrated tfsec, detect-secrets, and vulnerability scanning
+
+See [IMPROVEMENTS.md](IMPROVEMENTS.md) for detailed information about recent enhancements.
+
 ## 🏗️ Architecture
 
 ### Core Infrastructure Stack
@@ -87,6 +97,34 @@ kubectl get secret argocd-initial-admin-secret -n argocd -o jsonpath='{.data.pas
 
 # Check all services
 make info
+```
+
+## 🧪 Testing
+
+### Running Tests
+
+```bash
+# Run all tests
+make test
+
+# Run specific test types
+make test-bats        # Shell script tests
+make test-unit        # Terraform unit tests
+make test-integration # Integration tests
+make test-security    # Security scanning
+
+# Quick validation
+make test-quick
+```
+
+### Pre-commit Hooks
+
+```bash
+# Setup pre-commit hooks
+make pre-commit
+
+# Run linters manually
+make lint
 ```
 
 ## 🔧 Infrastructure as Code
