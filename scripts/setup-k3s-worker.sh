@@ -106,15 +106,16 @@ fi
 
 # Configure kubectl for worker node
 info "Configuring kubectl for worker node..."
+info "Using server URL: $K3S_URL"
 mkdir -p "$HOME/.kube"
 
 # Create kubeconfig for worker node
-cat <<EOF > "$HOME/.kube/config"
+cat > "$HOME/.kube/config" <<EOF
 apiVersion: v1
 clusters:
 - cluster:
     insecure-skip-tls-verify: true
-    server: $K3S_URL
+    server: ${K3S_URL}
   name: default
 contexts:
 - context:
@@ -127,7 +128,7 @@ preferences: {}
 users:
 - name: default
   user:
-    token: $K3S_TOKEN
+    token: ${K3S_TOKEN}
 EOF
 
 chmod 600 "$HOME/.kube/config"

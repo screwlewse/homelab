@@ -154,15 +154,16 @@ elif [[ "$NODE_TYPE" == "worker" ]]; then
     
     # Configure kubectl for worker node
     info "Configuring kubectl for worker node..."
+    info "Using server URL: $SERVER_URL"
     mkdir -p "$HOME/.kube"
     
     # Create kubeconfig for worker node
-    cat <<EOF > "$HOME/.kube/config"
+    cat > "$HOME/.kube/config" <<EOF
 apiVersion: v1
 clusters:
 - cluster:
     insecure-skip-tls-verify: true
-    server: $SERVER_URL
+    server: ${SERVER_URL}
   name: default
 contexts:
 - context:
@@ -175,7 +176,7 @@ preferences: {}
 users:
 - name: default
   user:
-    token: $SERVER_TOKEN
+    token: ${SERVER_TOKEN}
 EOF
     
     chmod 600 "$HOME/.kube/config"
