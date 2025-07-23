@@ -51,7 +51,11 @@ sudo cp /etc/rancher/k3s/k3s.yaml ~/.kube/config && sudo chown $USER:$USER ~/.ku
 # 1. Get token from control plane (10.0.0.88):
 sudo cat /var/lib/rancher/k3s/server/node-token
 
-# 2. On worker node, run simple setup:
+# 2a. Fresh Ubuntu worker (one-liner):
+curl -sfL https://raw.githubusercontent.com/screwlewse/homelab/main/scripts/setup-fresh-ubuntu.sh | \
+  bash -s -- worker https://10.0.0.88:6443 YOUR_TOKEN
+
+# 2b. Existing Ubuntu worker (simple):
 curl -sfL https://raw.githubusercontent.com/screwlewse/homelab/main/scripts/setup-worker-simple.sh | \
   bash -s -- 10.0.0.88 YOUR_TOKEN
 

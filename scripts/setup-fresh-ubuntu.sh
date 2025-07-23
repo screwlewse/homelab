@@ -150,52 +150,60 @@ elif [[ "$NODE_TYPE" == "worker" ]]; then
     fi
     
     info "Installing k3s worker node..."
-    curl -sfL https://get.k3s.io | K3S_URL="$SERVER_URL" K3S_TOKEN="$SERVER_TOKEN" sh -
     
-    # Configure kubectl for worker node
-    info "Configuring kubectl for worker node..."
-    info "Using server URL: $SERVER_URL"
-    mkdir -p "$HOME/.kube"
-    
-    # Create kubeconfig for worker node
-    cat > "$HOME/.kube/config" <<EOF
-apiVersion: v1
-clusters:
-- cluster:
-    insecure-skip-tls-verify: true
-    server: ${SERVER_URL}
-  name: default
-contexts:
-- context:
-    cluster: default
-    user: default
-  name: default
-current-context: default
-kind: Config
-preferences: {}
-users:
-- name: default
-  user:
-    token: ${SERVER_TOKEN}
-EOF
-    
-    chmod 600 "$HOME/.kube/config"
-    
-    # Test kubectl connection with timeout
-    info "Testing kubectl connection (this may take a moment)..."
-    if timeout 10 kubectl get nodes &>/dev/null; then
-        info "✅ kubectl configured successfully"
-        kubectl get nodes
-    else
-        warn "kubectl configuration needs adjustment for worker nodes"
-        info "This is normal for worker nodes. To access the cluster:"
-        info "  1. Copy kubeconfig from control plane: scp controlplane:~/.kube/config ~/.kube/config"
-        info "  2. Or check nodes from the control plane: ssh controlplane kubectl get nodes"
-        info ""
-        info "The worker node is still properly joined to the cluster."
+    # Clean up any previous installation attempts
+    info "Cleaning up any previous k3s agent installation..."
+    sudo pkill -f k3s-agent 2>/dev/null || true
+    if command -v k3s-agent-uninstall.sh &>/dev/null; then
+        sudo /usr/local/bin/k3s-agent-uninstall.sh || true
     fi
     
-    info "Worker node installation complete"
+    # Install k3s agent with timeout protection
+    info "Installing k3s agent with timeout protection..."
+    timeout 300 bash -c "
+        curl -sfL https://get.k3s.io | K3S_URL='$SERVER_URL' K3S_TOKEN='$SERVER_TOKEN' sh -
+    " || {
+        error "k3s installation timed out after 5 minutes. Check logs: sudo journalctl -u k3s-agent"
+    }
+    
+    # Wait for k3s agent to start
+    info "Waiting for k3s agent to start..."
+    max_attempts=24
+    attempt=0
+    while [ $attempt -lt $max_attempts ]; do
+        if sudo systemctl is-active --quiet k3s-agent; then
+            info "✅ k3s agent is active"
+            break
+        fi
+        
+        # Check for common failure states
+        if sudo systemctl is-failed --quiet k3s-agent; then
+            error "k3s-agent service failed to start. Check logs: sudo journalctl -u k3s-agent -n 20"
+        fi
+        
+        info "Waiting for k3s-agent to start... (attempt $((attempt + 1))/$max_attempts)"
+        if [ $((attempt % 6)) -eq 5 ]; then
+            info "📋 Current agent logs (last 5 lines):"
+            sudo journalctl -u k3s-agent -n 5 --no-pager || true
+        fi
+        
+        sleep 5
+        ((attempt++))
+    done
+    
+    # Check final status
+    if sudo systemctl is-active --quiet k3s-agent; then
+        info "✅ k3s agent is running"
+        info "📊 Agent service status:"
+        sudo systemctl status k3s-agent --no-pager -l || true
+    else
+        error "k3s agent failed to start. Check logs: sudo journalctl -u k3s-agent -n 20"
+    fi
+    
+    info "✅ Worker node installation complete!"
+    info ""
+    info "📋 To verify from the control plane:"
+    info "   kubectl get nodes"
 else
     error "Invalid node type: $NODE_TYPE (must be 'server' or 'worker')"
 fi
@@ -293,11 +301,13 @@ if [[ "$NODE_TYPE" == "server" ]]; then
     info "   make info"
 else
     info "Next steps for WORKER node:"
-    info "1. Verify node joined cluster (run on server):"
+    info "1. Verify node joined cluster (run on control plane):"
     info "   kubectl get nodes"
     info ""
-    info "2. Label node if needed (run on server):"
+    info "2. Label node if needed (run on control plane):"
     info "   kubectl label node <node-name> node-role.kubernetes.io/worker=worker"
+    info ""
+    info "3. Worker nodes don't need kubectl access - manage cluster from control plane"
 fi
 
 info ""
