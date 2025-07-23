@@ -3,27 +3,49 @@
 # Automated Git Management for k3s DevOps Pipeline
 # Commits and pushes phase completion changes with proper documentation
 
-set -e
+set -euo pipefail
+IFS=$'\n\t'
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# Enable debug mode if DEBUG is set
+[[ "${DEBUG:-}" == "true" ]] && set -x
+
+# Script metadata
+readonly SCRIPT_NAME=$(basename "${BASH_SOURCE[0]}")
+readonly SCRIPT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
+
+# Trap errors
+trap 'echo "Error on line $LINENO"' ERR
+
 PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
 
-# Colors for output
-GREEN='\033[0;32m'
-BLUE='\033[0;34m'
-YELLOW='\033[1;33m'
-NC='\033[0m'
+# Colors for output (only if terminal supports it)
+if [[ -t 1 ]]; then
+    readonly GREEN='\033[0;32m'
+    readonly BLUE='\033[0;34m'
+    readonly YELLOW='\033[1;33m'
+    readonly NC='\033[0m'
+else
+    readonly GREEN=''
+    readonly BLUE=''
+    readonly YELLOW=''
+    readonly NC=''
+fi
 
 log_info() {
-    echo -e "${BLUE}ℹ️  $1${NC}"
+    echo -e "${BLUE}ℹ️  $*${NC}"
 }
 
 log_success() {
-    echo -e "${GREEN}✅ $1${NC}"
+    echo -e "${GREEN}✅ $*${NC}"
 }
 
 log_warning() {
-    echo -e "${YELLOW}⚠️  $1${NC}"
+    echo -e "${YELLOW}⚠️  $*${NC}" >&2
+}
+
+log_error() {
+    echo -e "${YELLOW}❌ $*${NC}" >&2
+    exit 1
 }
 
 # Function to show usage
@@ -42,20 +64,21 @@ if [[ $# -lt 2 ]]; then
     show_usage
 fi
 
-PHASE_NAME="$1"
-PHASE_DESCRIPTION="$2"
+readonly PHASE_NAME="$1"
+readonly PHASE_DESCRIPTION="$2"
 
-cd "$PROJECT_ROOT"
+# Validate phase name and description
+[[ -n "$PHASE_NAME" ]] || log_error "Phase name cannot be empty"
+[[ -n "$PHASE_DESCRIPTION" ]] || log_error "Phase description cannot be empty"
+
+cd "$PROJECT_ROOT" || log_error "Failed to change directory to $PROJECT_ROOT"
 
 echo "🔄 Git Management - Phase Completion"
 echo "====================================="
 echo ""
 
 # Check if we're in a git repository
-if ! git rev-parse --git-dir >/dev/null 2>&1; then
-    log_warning "Not in a git repository"
-    exit 1
-fi
+git rev-parse --git-dir >/dev/null 2>&1 || log_error "Not in a git repository"
 
 log_info "Phase: $PHASE_NAME"
 log_info "Description: $PHASE_DESCRIPTION"
@@ -79,12 +102,10 @@ echo ""
 
 # Stage all changes
 log_info "Staging changes..."
-git add .
+git add . || log_error "Failed to stage changes"
 
-# Commit with proper message format
-COMMIT_MESSAGE="feat: $PHASE_DESCRIPTION
-
-$(git diff --cached --name-only | while IFS= read -r file; do
+# Generate file change summary
+FILE_CHANGES=$(git diff --cached --name-only | while IFS= read -r file; do
     case "$file" in
         *.tf) echo "- Add Terraform configuration: $file" ;;
         *.yaml|*.yml) echo "- Add Kubernetes manifest: $file" ;;
@@ -93,6 +114,11 @@ $(git diff --cached --name-only | while IFS= read -r file; do
         *) echo "- Update: $file" ;;
     esac
 done)
+
+# Commit with proper message format
+readonly COMMIT_MESSAGE="feat: $PHASE_DESCRIPTION
+
+$FILE_CHANGES
 
 🤖 Generated with [Claude Code](https://claude.ai/code)
 
@@ -103,7 +129,7 @@ if git commit -m "$COMMIT_MESSAGE"; then
     log_success "Commit created successfully"
     
     # Get commit hash for reference
-    COMMIT_HASH=$(git rev-parse --short HEAD)
+    readonly COMMIT_HASH=$(git rev-parse --short HEAD)
     log_info "Commit hash: $COMMIT_HASH"
 else
     log_warning "Commit failed"
@@ -117,7 +143,7 @@ if git push; then
     log_success "Changes pushed successfully"
     
     # Show remote URL for reference
-    REMOTE_URL=$(git remote get-url origin)
+    readonly REMOTE_URL=$(git remote get-url origin 2>/dev/null || echo "No remote configured")
     log_info "Repository: $REMOTE_URL"
 else
     log_warning "Push failed - you may need to push manually"
@@ -129,7 +155,7 @@ log_success "🎉 Phase '$PHASE_NAME' changes committed and pushed successfully!
 
 # Create git tag for major phases
 if [[ "$PHASE_NAME" =~ ^phase[0-9]+$ ]]; then
-    TAG_NAME="v1.0-$PHASE_NAME"
+    readonly TAG_NAME="v1.0-$PHASE_NAME"
     
     echo ""
     log_info "Creating git tag: $TAG_NAME"
@@ -150,10 +176,10 @@ fi
 echo ""
 echo "📝 Git Summary:"
 echo "--------------"
-echo "  Commit: $COMMIT_HASH"
-echo "  Branch: $(git branch --show-current)"
-echo "  Remote: $REMOTE_URL"
-if [[ -n "$TAG_NAME" ]]; then
+echo "  Commit: ${COMMIT_HASH:-unknown}"
+echo "  Branch: $(git branch --show-current 2>/dev/null || echo "unknown")"
+echo "  Remote: ${REMOTE_URL:-unknown}"
+if [[ -n "${TAG_NAME:-}" ]]; then
     echo "  Tag:    $TAG_NAME"
 fi
 
