@@ -38,9 +38,30 @@ See [IMPROVEMENTS.md](IMPROVEMENTS.md) for detailed information about recent enh
 
 ### Prerequisites
 
-- Ubuntu 24 server with k3s installed
-- kubectl configured with cluster access
-- Terraform >= 1.0 (for IaC deployment)
+- Ubuntu 20.04+ server (fresh install supported)
+- 2+ CPU cores, 4GB+ RAM recommended
+- Static IP address configured
+
+### Fresh Ubuntu Installation
+
+For a brand new Ubuntu server:
+
+```bash
+# Download and run the setup script
+curl -sfL https://raw.githubusercontent.com/screwlewse/homelab/main/scripts/setup-fresh-ubuntu.sh | bash -s -- server
+
+# For worker nodes (provide server URL and token)
+curl -sfL https://raw.githubusercontent.com/screwlewse/homelab/main/scripts/setup-fresh-ubuntu.sh | bash -s -- worker https://SERVER_IP:6443 TOKEN
+```
+
+Or clone the repo first:
+
+```bash
+git clone https://github.com/screwlewse/homelab.git
+cd homelab
+./scripts/setup-fresh-ubuntu.sh server  # For control plane
+./scripts/setup-fresh-ubuntu.sh worker https://SERVER_IP:6443 TOKEN  # For worker
+```
 
 ### Option 1: Infrastructure as Code (Recommended)
 
@@ -199,6 +220,43 @@ gitops/
 │   └── prod/
 └── infrastructure/       # Infrastructure as Code
 ```
+
+## 🖥️ Multi-Node Support
+
+### Adding Worker Nodes
+
+The repository now supports multi-node k3s clusters:
+
+```bash
+# On the server node, get the token:
+sudo cat /var/lib/rancher/k3s/server/node-token
+
+# On the worker node:
+./scripts/setup-k3s-worker.sh https://SERVER_IP:6443 K1234567890abcdef...
+
+# Or during fresh install:
+./scripts/setup-fresh-ubuntu.sh worker https://SERVER_IP:6443 K1234567890abcdef...
+```
+
+### Node Management
+
+```bash
+# View all nodes
+kubectl get nodes
+
+# Label worker nodes
+kubectl label node worker-1 node-role.kubernetes.io/worker=worker
+
+# Taint nodes for specific workloads
+kubectl taint nodes worker-1 workload=frontend:NoSchedule
+```
+
+### Considerations for Multi-Node
+
+- **Storage**: Consider distributed storage (Longhorn, Rook/Ceph)
+- **Networking**: Ensure all nodes can communicate
+- **Load Balancing**: MetalLB works across all nodes
+- **Scheduling**: Use node selectors and affinity rules
 
 ## 🧪 Testing & Validation
 
