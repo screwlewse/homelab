@@ -156,8 +156,19 @@ fi
 
 # Set up Python environment
 info "Setting up Python environment..."
-pip3 install --user --upgrade pip
-pip3 install --user virtualenv
+# Install python3-pip and python3-venv via apt to avoid externally-managed-environment issues
+sudo apt-get update -qq
+sudo apt-get install -y python3-pip python3-venv python3-full
+
+# Only attempt pip upgrade if not in externally-managed environment
+if pip3 install --user --upgrade pip --dry-run &>/dev/null; then
+    pip3 install --user --upgrade pip
+    pip3 install --user virtualenv
+else
+    info "Python environment is externally managed, using system packages"
+    # Ensure python3-venv is available as alternative to virtualenv
+    sudo apt-get install -y python3-venv
+fi
 
 # Create useful aliases
 info "Setting up useful aliases..."
