@@ -46,6 +46,19 @@ sudo cp /etc/rancher/k3s/k3s.yaml ~/.kube/config && sudo chown $USER:$USER ~/.ku
 # Or use: ./scripts/fix-kubectl-permissions.sh
 ```
 
+### Adding Worker Nodes (Simple)
+```bash
+# 1. Get token from control plane (10.0.0.88):
+sudo cat /var/lib/rancher/k3s/server/node-token
+
+# 2. On worker node, run simple setup:
+curl -sfL https://raw.githubusercontent.com/screwlewse/homelab/main/scripts/setup-worker-simple.sh | \
+  bash -s -- 10.0.0.88 YOUR_TOKEN
+
+# 3. Verify from control plane:
+kubectl get nodes
+```
+
 ## Architecture
 
 ### Core Stack
