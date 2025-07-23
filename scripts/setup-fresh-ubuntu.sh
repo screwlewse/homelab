@@ -132,6 +132,44 @@ elif [[ "$NODE_TYPE" == "worker" ]]; then
     info "Installing k3s worker node..."
     curl -sfL https://get.k3s.io | K3S_URL="$SERVER_URL" K3S_TOKEN="$SERVER_TOKEN" sh -
     
+    # Configure kubectl for worker node
+    info "Configuring kubectl for worker node..."
+    mkdir -p "$HOME/.kube"
+    
+    # Create kubeconfig for worker node
+    cat <<EOF > "$HOME/.kube/config"
+apiVersion: v1
+clusters:
+- cluster:
+    insecure-skip-tls-verify: true
+    server: $SERVER_URL
+  name: default
+contexts:
+- context:
+    cluster: default
+    user: default
+  name: default
+current-context: default
+kind: Config
+preferences: {}
+users:
+- name: default
+  user:
+    token: $SERVER_TOKEN
+EOF
+    
+    chmod 600 "$HOME/.kube/config"
+    
+    # Test kubectl connection
+    if kubectl get nodes &>/dev/null; then
+        info "✅ kubectl configured successfully"
+        kubectl get nodes
+    else
+        warn "kubectl configuration may need adjustment"
+        info "You may need to copy the full kubeconfig from the control plane:"
+        info "  scp controlplane:~/.kube/config ~/.kube/config"
+    fi
+    
     info "Worker node installation complete"
 else
     error "Invalid node type: $NODE_TYPE (must be 'server' or 'worker')"

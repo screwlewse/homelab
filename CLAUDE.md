@@ -40,6 +40,10 @@ make status                          # Comprehensive infrastructure status check
 kubectl get pods -A                   # Check all pods across namespaces
 helm list -A                         # List all Helm releases
 docker images | grep 10.0.0.88:30880 # List images in Harbor registry
+
+# If kubectl requires sudo, fix with:
+sudo cp /etc/rancher/k3s/k3s.yaml ~/.kube/config && sudo chown $USER:$USER ~/.kube/config
+# Or use: ./scripts/fix-kubectl-permissions.sh
 ```
 
 ## Architecture

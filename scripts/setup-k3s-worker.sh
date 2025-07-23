@@ -94,6 +94,44 @@ else
     error "k3s agent failed to start"
 fi
 
+# Configure kubectl for worker node
+info "Configuring kubectl for worker node..."
+mkdir -p "$HOME/.kube"
+
+# Create kubeconfig for worker node
+cat <<EOF > "$HOME/.kube/config"
+apiVersion: v1
+clusters:
+- cluster:
+    insecure-skip-tls-verify: true
+    server: $K3S_URL
+  name: default
+contexts:
+- context:
+    cluster: default
+    user: default
+  name: default
+current-context: default
+kind: Config
+preferences: {}
+users:
+- name: default
+  user:
+    token: $K3S_TOKEN
+EOF
+
+chmod 600 "$HOME/.kube/config"
+
+# Test kubectl connection
+if kubectl get nodes &>/dev/null; then
+    info "✅ kubectl configured successfully"
+    kubectl get nodes
+else
+    warn "kubectl configuration may need adjustment"
+    info "You may need to copy the full kubeconfig from the control plane:"
+    info "  scp controlplane:~/.kube/config ~/.kube/config"
+fi
+
 # Show node info
 info "Worker node setup complete!"
 info ""

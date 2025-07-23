@@ -91,7 +91,7 @@ cd homelab
 For existing Ubuntu installations with prerequisites:
 
 ```bash
-# Just run the worker setup script
+# Just run the worker setup script (now includes kubectl configuration)
 ./scripts/setup-k3s-worker.sh https://10.0.0.88:6443 K10c843b1f6b8c1d23456789abcdef...
 ```
 
@@ -269,6 +269,36 @@ helm install nfs-subdir-external-provisioner nfs-subdir-external-provisioner/nfs
 ## Troubleshooting
 
 ### Common Issues and Solutions
+
+#### kubectl Permission Issues
+
+If kubectl requires sudo or shows certificate errors:
+
+```bash
+# On control plane (server) node
+sudo cp /etc/rancher/k3s/k3s.yaml ~/.kube/config
+sudo chown $USER:$USER ~/.kube/config
+chmod 600 ~/.kube/config
+
+# Or use the fix script
+./scripts/fix-kubectl-permissions.sh
+
+# Or use k3s kubectl directly
+sudo k3s kubectl get nodes
+```
+
+For worker nodes, kubectl should be configured automatically by the setup scripts. If not:
+
+```bash
+# Option 1: Copy from control plane
+scp controlplane:~/.kube/config ~/.kube/config
+
+# Option 2: Use the fix script with server info
+./scripts/fix-kubectl-permissions.sh https://10.0.0.88:6443 K10abc123...
+
+# Option 3: Access via SSH to control plane
+ssh controlplane kubectl get nodes
+```
 
 #### Worker Node Won't Join
 
