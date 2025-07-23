@@ -287,11 +287,16 @@ chmod 600 ~/.kube/config
 sudo k3s kubectl get nodes
 ```
 
+**Important**: The default k3s kubeconfig uses `127.0.0.1:6443` which only works on the control plane itself. Our setup scripts automatically fix this by replacing it with the actual server IP.
+
 For worker nodes, kubectl should be configured automatically by the setup scripts. If not:
 
 ```bash
-# Option 1: Copy from control plane
+# Option 1: Copy from control plane (only if control plane config is fixed)
 scp controlplane:~/.kube/config ~/.kube/config
+
+# If the config still uses localhost, fix it:
+sed -i 's/127.0.0.1/10.0.0.88/g' ~/.kube/config
 
 # Option 2: Use the fix script with server info
 ./scripts/fix-kubectl-permissions.sh https://10.0.0.88:6443 K10abc123...

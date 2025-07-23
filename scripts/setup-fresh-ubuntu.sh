@@ -114,6 +114,11 @@ if [[ "$NODE_TYPE" == "server" ]]; then
     sudo chown "$USER:$USER" "$HOME/.kube/config"
     chmod 600 "$HOME/.kube/config"
     
+    # Fix localhost issue for multi-node setup - replace 127.0.0.1 with actual server IP
+    SERVER_IP=$(hostname -I | awk '{print $1}')
+    sed -i "s/127.0.0.1/$SERVER_IP/g" "$HOME/.kube/config"
+    info "Updated kubeconfig to use server IP: $SERVER_IP"
+    
     # Test kubectl
     kubectl get nodes
     

@@ -115,6 +115,9 @@ install_k3s() {
     sudo cp /etc/rancher/k3s/k3s.yaml ~/.kube/config
     sudo chown $USER:$USER ~/.kube/config
     
+    # Fix localhost issue for multi-node setup - replace 127.0.0.1 with actual server IP
+    sed -i "s/127.0.0.1/${SERVER_IP}/g" ~/.kube/config
+    
     # Add to shell profile
     if ! grep -q "KUBECONFIG" ~/.bashrc; then
         echo 'export KUBECONFIG=~/.kube/config' >> ~/.bashrc

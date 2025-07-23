@@ -437,6 +437,26 @@ make logs                 # Show component logs
 - **Infrastructure as Code**: ✅ Complete Terraform automation
 - **Testing & Validation**: ✅ Comprehensive test suite
 
+## 🔧 Troubleshooting
+
+### Common Issues
+
+#### kubectl Shows "Connection Refused" or Certificate Errors
+
+The default k3s configuration uses `127.0.0.1:6443` which only works on the control plane. This is automatically fixed by our setup scripts, but if you encounter this:
+
+```bash
+# Fix existing kubeconfig (replace with your server IP)
+sed -i 's/127.0.0.1/10.0.0.88/g' ~/.kube/config
+
+# Or use the fix script
+./scripts/fix-kubectl-permissions.sh
+```
+
+#### Multi-Node Setup Issues
+
+See [docs/MULTI-NODE.md](docs/MULTI-NODE.md) for comprehensive multi-node troubleshooting.
+
 ## 🤝 Contributing
 
 This is a homelab project demonstrating enterprise DevOps practices. Feel free to:
