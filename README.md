@@ -225,31 +225,107 @@ gitops/
 
 ### Adding Worker Nodes
 
-The repository now supports multi-node k3s clusters:
+The repository now supports multi-node k3s clusters. To add worker nodes, you need the **k3s node token** from your server node.
+
+#### Step 1: Get the Node Token (on server node)
+
+The k3s node token is a secure authentication token that allows worker nodes to join your cluster. Run this command on your **server/control plane node**:
 
 ```bash
-# On the server node, get the token:
+# SSH into your server node first, then run:
 sudo cat /var/lib/rancher/k3s/server/node-token
 
-# On the worker node:
-./scripts/setup-k3s-worker.sh https://SERVER_IP:6443 K1234567890abcdef...
+# Example output:
+# K10c843b1f6b8c1d23456789abcdef0123456789abcdef0123456789abcdef01::server:1234567890abcdef1234567890abcdef
+```
 
-# Or during fresh install:
-./scripts/setup-fresh-ubuntu.sh worker https://SERVER_IP:6443 K1234567890abcdef...
+**Important**: This token is like a password - keep it secure and don't share it publicly.
+
+#### Step 2: Get the Server URL
+
+The server URL is the address where your k3s API server is listening:
+
+```bash
+# Format: https://<SERVER_IP>:6443
+# Example: https://10.0.0.88:6443
+
+# To find your server IP:
+hostname -I | awk '{print $1}'
+```
+
+#### Step 3: Join Worker Node to Cluster
+
+On the **worker node**, run one of these commands:
+
+```bash
+# Option 1: Using the worker setup script
+./scripts/setup-k3s-worker.sh https://SERVER_IP:6443 YOUR_NODE_TOKEN
+
+# Option 2: During fresh Ubuntu install
+./scripts/setup-fresh-ubuntu.sh worker https://SERVER_IP:6443 YOUR_NODE_TOKEN
+
+# Real example:
+./scripts/setup-k3s-worker.sh https://10.0.0.88:6443 K10c843b1f6b8c1d23456789abcdef0123456789abcdef0123456789abcdef01::server:1234567890abcdef1234567890abcdef
+```
+
+#### Step 4: Verify Worker Node Joined
+
+Back on the **server node**, verify the worker joined successfully:
+
+```bash
+# Check all nodes in the cluster
+kubectl get nodes
+
+# Example output:
+# NAME       STATUS   ROLES                  AGE   VERSION
+# server-1   Ready    control-plane,master   10d   v1.32.6+k3s1
+# worker-1   Ready    <none>                 5m    v1.32.6+k3s1
 ```
 
 ### Node Management
 
 ```bash
-# View all nodes
-kubectl get nodes
+# View all nodes with more details
+kubectl get nodes -o wide
 
-# Label worker nodes
+# Label worker nodes for clarity
 kubectl label node worker-1 node-role.kubernetes.io/worker=worker
 
 # Taint nodes for specific workloads
 kubectl taint nodes worker-1 workload=frontend:NoSchedule
+
+# Remove a node from cluster (run on server)
+kubectl drain worker-1 --ignore-daemonsets --delete-emptydir-data
+kubectl delete node worker-1
 ```
+
+### Troubleshooting Worker Node Issues
+
+If the worker node fails to join:
+
+1. **Check connectivity**:
+   ```bash
+   # From worker, test connection to server
+   curl -k https://SERVER_IP:6443
+   ```
+
+2. **Verify token is correct**:
+   - Token should start with `K10` or `K11`
+   - Token is case-sensitive
+   - Token doesn't expire but changes if k3s is reinstalled
+
+3. **Check firewall**:
+   ```bash
+   # Required ports:
+   # 6443: Kubernetes API server
+   # 10250: Kubelet metrics
+   # 8472: Flannel VXLAN (if using Flannel)
+   ```
+
+4. **View k3s agent logs** (on worker):
+   ```bash
+   sudo journalctl -u k3s-agent -f
+   ```
 
 ### Considerations for Multi-Node
 

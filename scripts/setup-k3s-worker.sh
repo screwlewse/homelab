@@ -30,12 +30,34 @@ if [[ $# -lt 2 ]]; then
     echo "  $0 https://10.0.0.88:6443 K10abc123def456..."
     echo ""
     echo "To get the token from the server node:"
-    echo "  sudo cat /var/lib/rancher/k3s/server/node-token"
+    echo "  1. SSH into your k3s server/control plane node"
+    echo "  2. Run: sudo cat /var/lib/rancher/k3s/server/node-token"
+    echo "  3. Copy the entire token (it's long!)"
+    echo ""
+    echo "The token format looks like:"
+    echo "  K10[long-string]::server:[long-string]"
     exit 1
 fi
 
 K3S_URL="$1"
 K3S_TOKEN="$2"
+
+# Validate URL format
+if ! [[ "$K3S_URL" =~ ^https://[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+:6443$ ]]; then
+    warn "Server URL format looks incorrect. Expected format: https://IP:6443"
+    warn "Got: $K3S_URL"
+    echo ""
+    echo "Continuing anyway, but this might fail..."
+fi
+
+# Validate token format (basic check)
+if ! [[ "$K3S_TOKEN" =~ ^K1[01] ]]; then
+    error "Token format looks incorrect. k3s tokens typically start with 'K10' or 'K11'"
+fi
+
+if [[ ${#K3S_TOKEN} -lt 100 ]]; then
+    error "Token seems too short. k3s tokens are typically 100+ characters long"
+fi
 
 info "🚀 Setting up k3s worker node"
 info "================================"
@@ -79,3 +101,10 @@ info "To verify from the server node, run:"
 info "  kubectl get nodes"
 info ""
 info "This node should appear in the list with status 'Ready'"
+info ""
+info "If the node doesn't appear or shows 'NotReady':"
+info "  1. Check the agent logs: sudo journalctl -u k3s-agent -f"
+info "  2. Verify network connectivity to $K3S_URL"
+info "  3. Ensure the token is correct (get fresh token if needed)"
+info ""
+info "For detailed troubleshooting, see: docs/MULTI-NODE.md"
