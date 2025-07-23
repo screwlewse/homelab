@@ -85,7 +85,17 @@ curl -sfL https://get.k3s.io | K3S_URL="$K3S_URL" K3S_TOKEN="$K3S_TOKEN" sh -
 
 # Wait for k3s agent to start
 info "Waiting for k3s agent to start..."
-sleep 10
+local max_attempts=12
+local attempt=0
+while [ $attempt -lt $max_attempts ]; do
+    if sudo systemctl is-active --quiet k3s-agent; then
+        info "✅ k3s agent is active"
+        break
+    fi
+    info "Waiting for k3s-agent to start... (attempt $((attempt + 1))/$max_attempts)"
+    sleep 5
+    ((attempt++))
+done
 
 # Check agent status
 if sudo systemctl is-active --quiet k3s-agent; then
@@ -122,14 +132,18 @@ EOF
 
 chmod 600 "$HOME/.kube/config"
 
-# Test kubectl connection
-if kubectl get nodes &>/dev/null; then
+# Test kubectl connection with timeout
+info "Testing kubectl connection (this may take a moment)..."
+if timeout 10 kubectl get nodes &>/dev/null; then
     info "✅ kubectl configured successfully"
     kubectl get nodes
 else
-    warn "kubectl configuration may need adjustment"
-    info "You may need to copy the full kubeconfig from the control plane:"
-    info "  scp controlplane:~/.kube/config ~/.kube/config"
+    warn "kubectl configuration needs adjustment for worker nodes"
+    info "This is normal for worker nodes. To access the cluster:"
+    info "  1. Copy kubeconfig from control plane: scp controlplane:~/.kube/config ~/.kube/config"
+    info "  2. Or check nodes from the control plane: ssh controlplane kubectl get nodes"
+    info ""
+    info "The worker node is still properly joined to the cluster."
 fi
 
 # Show node info

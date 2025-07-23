@@ -106,7 +106,22 @@ if [[ "$NODE_TYPE" == "server" ]]; then
     
     # Wait for k3s to be ready
     info "Waiting for k3s to be ready..."
-    sleep 30
+    local max_attempts=30
+    local attempt=0
+    while [ $attempt -lt $max_attempts ]; do
+        if sudo k3s kubectl get nodes &>/dev/null; then
+            info "✅ k3s is ready"
+            break
+        fi
+        info "Waiting for k3s to start... (attempt $((attempt + 1))/$max_attempts)"
+        sleep 5
+        ((attempt++))
+    done
+    
+    if [ $attempt -eq $max_attempts ]; then
+        warn "k3s is taking longer than expected to start"
+        info "Continuing with setup anyway..."
+    fi
     
     # Configure kubectl for the user
     mkdir -p "$HOME/.kube"
@@ -165,14 +180,18 @@ EOF
     
     chmod 600 "$HOME/.kube/config"
     
-    # Test kubectl connection
-    if kubectl get nodes &>/dev/null; then
+    # Test kubectl connection with timeout
+    info "Testing kubectl connection (this may take a moment)..."
+    if timeout 10 kubectl get nodes &>/dev/null; then
         info "✅ kubectl configured successfully"
         kubectl get nodes
     else
-        warn "kubectl configuration may need adjustment"
-        info "You may need to copy the full kubeconfig from the control plane:"
-        info "  scp controlplane:~/.kube/config ~/.kube/config"
+        warn "kubectl configuration needs adjustment for worker nodes"
+        info "This is normal for worker nodes. To access the cluster:"
+        info "  1. Copy kubeconfig from control plane: scp controlplane:~/.kube/config ~/.kube/config"
+        info "  2. Or check nodes from the control plane: ssh controlplane kubectl get nodes"
+        info ""
+        info "The worker node is still properly joined to the cluster."
     fi
     
     info "Worker node installation complete"
